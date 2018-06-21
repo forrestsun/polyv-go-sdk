@@ -13,36 +13,37 @@ import (
 	"time"
 )
 
+var params map[string]string
+
 const (
 	DefaultAPIHost   = "http://api.polyv.net/v2"
 	DefaultVideoHost = "http://api.polyv.net/v2/video"
 	DefaultService   = "http://v.polyv.net/uc/services/rest?method="
 )
 
-const (
-	Today     = "today"      //今天
-	Yesterday = "yesterday"  //昨天
-	ThisWeek  = "this_week"  //本周
-	LastWeek  = "last_week"  //上周
-	SevenDays = "7days"      //7天 *默认
-	ThisMonth = "this_month" //本月
-	LastMonth = "last_month" //上月
-	ThisYear  = "this_year"  //今年
-	LastYear  = "last_year"  //去年
-)
-
-var Err_uploadimg_msg = UploadImgMsg{
-	ErrorStr: "",
-	Data:     false,
-}
-
-func Login(email, passwd string) *PolyvUserInfo {
+//echo -n 'mder.mder/1' | md5sum/sha1sum
+// 为避免明文读取，参数passwd为SHA1生成密码生成后的参数
+// 参数passwdmd5为密码的32位MD5校验码
+func Login(email, passwd, passwdmd5 string) *PolyvUserInfo {
 	var userinfo PolyvUserInfo
+	if email == "" || passwd == "" || passwdmd5 == "" || len(passwd) < 20 {
+		return &PolyvUserInfo{
+			RespMsg: RespMsg{
+				Status_Code: 400,
+				Status:      "error",
+				Message:     "参数不能为空或有错误",
+			},
+		}
+	}
+
+	passwd = strings.ToUpper(passwd[0:20])
+	passwdmd5 = strings.ToLower(passwd)
 	pwdmd5 := ""
-	goreq.New().
-		Post(fmt.Sprintf("http://api.polyv.net/v2/user/login?email=%s&password=%s&passwordMd5=%s",
-			email, passwd, pwdmd5)).
-		BindBody(&userinfo).End()
+	goreq.New().Post(fmt.Sprintf("http://api.polyv.net/v2/user/login?email=%s&password=%s&passwordMd5=%s",
+		email, passwd, pwdmd5)).BindBody(&userinfo).
+		// SetDebug(true).
+		// SetCurlCommand(true).
+		End()
 
 	return &userinfo
 }
@@ -98,6 +99,7 @@ func (self *PolyvInfo) UpFirstImageByUrl(vid, img_url, img_name string) *UploadI
 //上传多个视频的预览图URL
 func (self *PolyvInfo) UploadConverImageUrl(vids, cataids, img_url string) *RespMsg {
 	//http://api.polyv.net/v2/video/{userid}/uploadCoverImageUrl
+	params = make(map[string]string)
 	respmsg := RespMsg{}
 	str := ""
 
@@ -107,26 +109,22 @@ func (self *PolyvInfo) UploadConverImageUrl(vids, cataids, img_url string) *Resp
 		return &respmsg
 	}
 
-	req := goreq.New().
-		Post(fmt.Sprintf("%s/%s/uploadCoverImageUrl", DefaultVideoHost, self.UserID)).
-		BindBody(&respmsg)
-
 	ptime := time.Now().Unix() * 1000
 
 	if vids != "" {
-		str = fmt.Sprintf("fileUrl=%s&ptime=%s&vids=%s%s", img_url, fmt.Sprintf("%d", ptime), vids, self.SecretKey)
-		req.Query("vids=" + vids)
+		str = fmt.Sprintf("fileUrl=%s&ptime=%d&vids=%s%s", img_url, ptime, vids, self.SecretKey)
+		params["vids"] = vids
 
 	} else if cataids != "" {
-		str = fmt.Sprintf("fileUrl=%s&ptime=%s&cataids=%s%s", img_url, fmt.Sprintf("%d", ptime), vids, self.SecretKey)
-		req.Query("cataids=" + vids)
+		str = fmt.Sprintf("fileUrl=%s&ptime=%d&cataids=%s%s", img_url, ptime, vids, self.SecretKey)
+		params["cataids"] = cataids
 	}
-	sign := GetSign(str)
-	req.Query("fileUrl=" + img_url)
-	req.Query("ptime=" + fmt.Sprintf("%d", ptime))
-	req.Query("sign=" + sign)
-	req.SetDebug(self.Verbose).SetCurlCommand(self.Verbose).End()
 
+	params["fileUrl"] = img_url
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+
+	url := fmt.Sprintf("%s/%s/uploadCoverImageUrl", DefaultVideoHost, self.UserID)
+	self.request(POST, url, str, params, &respmsg)
 	return &respmsg
 
 }
@@ -293,46 +291,43 @@ func (self *PolyvInfo) GetVideoImage(vid, t string) *VideoImgMsg {
 	return &vimgmsg
 }
 
+const (
+	GET  = "get"
+	POST = "post"
+)
+
+func (self *PolyvInfo) request(reqtype, url, str_sign string, param map[string]string, body interface{}) {
+	var req *goreq.GoReq
+
+	if reqtype == "post" {
+		req = goreq.New().Post(url).BindBody(body)
+	} else {
+		req = goreq.New().Get(url).BindBody(body)
+	}
+
+	for k, v := range param {
+		req.Query(fmt.Sprintf("%s=%s", k, v))
+	}
+	sign := GetSign(str_sign)
+	req.Query("sign=" + sign)
+	req.SetDebug(self.Verbose).SetCurlCommand(self.Verbose).End()
+}
+
 //获取单个视频信息
 func (self *PolyvInfo) GetVideoInfo(vid string) *VideoMsg {
 	//http://api.polyv.net/v2/video/{userid}/get-video-msg
-	var videomsg VideoMsg
-	req := goreq.New().Get(fmt.Sprintf("%s/video/%s/get-video-msg", DefaultAPIHost, self.UserID))
-	format := "json" //todo
-	jsonp := ""      //todo
+	params = make(map[string]string)
+	videomsg := VideoMsg{}
+
 	ptime := time.Now().Unix() * 1000
+	str := fmt.Sprintf("format=%s&ptime=%d&vid=%s%s", "json", ptime, vid, self.SecretKey)
 
-	str := ""
-	if jsonp == "" {
-		str = fmt.Sprintf("format=%s&ptime=%d&vid=%s%s", format, ptime, vid, self.SecretKey)
-	} else {
-		str = fmt.Sprintf("format=%s&jsonp=%s&ptime=%d&vid=%s%s", format, jsonp, ptime, vid, self.SecretKey)
-	}
-	sign := GetSign(str)
+	params["format"] = "json"
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["vid"] = vid
+	url := fmt.Sprintf("%s/video/%s/get-video-msg", DefaultAPIHost, self.UserID)
 
-	req.Query("format=" + format)
-	if jsonp != "" {
-		req.Query("jsonp=" + jsonp)
-	}
-	req.Query(fmt.Sprintf("ptime=%d", ptime))
-	req.Query("vid=" + vid)
-	req.Query("sign=" + sign)
-
-	_, _, errs := req.
-		BindBody(&videomsg).
-		SetCurlCommand(self.Verbose).
-		SetDebug(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &VideoMsg{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
+	self.request(GET, url, str, params, &videomsg)
 
 	return &videomsg
 }
@@ -340,7 +335,8 @@ func (self *PolyvInfo) GetVideoInfo(vid string) *VideoMsg {
 //获取最新视频/全部视频列表
 func (self *PolyvInfo) GetVideoList(catatree, pageSize, pageNum, startDate, endDate string) *VideoList {
 	//http://api.polyv.net/v2/video/{userid}/get-new-list
-	var videolist VideoList
+	params = make(map[string]string)
+	videolist := VideoList{}
 
 	// self.loginfo(catatree)
 	if catatree == "" {
@@ -372,32 +368,15 @@ func (self *PolyvInfo) GetVideoList(catatree, pageSize, pageNum, startDate, endD
 	param_str := str
 	str = str + self.SecretKey
 
-	sign := GetSign(str)
-	param_str = param_str + "&sign=" + sign
-
-	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/video/%s/get-new-list?%s", DefaultAPIHost, self.UserID, param_str)).
-		BindBody(&videolist).
-		SetDebug(self.Verbose).
-		SetCurlCommand(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &VideoList{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
+	url := fmt.Sprintf("%s/video/%s/get-new-list?%s", DefaultAPIHost, self.UserID, param_str)
+	self.request(GET, url, str, nil, &videolist)
 
 	return &videolist
 }
 
 //按标题查找视频
 func (self *PolyvInfo) SearchByTitle(title, pageSize, pageNum string) *StandVideoList {
-	//http://api.polyv.net/v2/video/{userid}/search
-	var videolist StandVideoList
+	videolist := StandVideoList{}
 
 	if pageSize == "" {
 		pageSize = "10"
@@ -412,123 +391,62 @@ func (self *PolyvInfo) SearchByTitle(title, pageSize, pageNum string) *StandVide
 	param_str := str
 	str = str + self.SecretKey
 
-	sign := GetSign(str)
-	param_str = param_str + "&sign=" + sign
+	url := fmt.Sprintf("%s/video/%s/search?%s", DefaultAPIHost, self.UserID, param_str)
+	self.request(GET, url, str, nil, &videolist)
 
-	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/video/%s/search?%s", DefaultAPIHost, self.UserID, param_str)).
-		BindBody(&videolist).
-		SetDebug(self.Verbose).
-		SetCurlCommand(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &StandVideoList{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
 	return &videolist
 }
 
 func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
-	//http://api.polyv.net/v2/video/{userid}/addCata
-	var resp AddCataMsg
-
+	resp := AddCataMsg{}
+	params = make(map[string]string)
 	url := fmt.Sprintf("%s/%s/addCata", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
+
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["cataname"] = cata_name
+	params["parentid"] = "1"
+
 	str := fmt.Sprintf("cataname=%s&parentid=1&ptime=%d%s", cata_name, ptime, self.SecretKey)
-	sign := GetSign(str)
+	self.request(POST, url, str, params, &resp)
 
-	_, _, errs := goreq.New().Post(url).
-		BindBody(&resp).
-		Query(fmt.Sprintf("ptime=%d", ptime)).
-		Query("sign=" + sign).
-		Query("cataname=" + cata_name).
-		Query("parentid=1").
-		SetCurlCommand(self.Verbose).
-		SetDebug(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &AddCataMsg{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
 	return &resp
 }
 
 func (self *PolyvInfo) DelCata(cataid string) *DelCataMsg {
-	//http://api.polyv.net/v2/video/{userid}/deleteCata
-	var resp DelCataMsg
-
+	resp := DelCataMsg{}
+	params = make(map[string]string)
 	url := fmt.Sprintf("%s/%s/deleteCata", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 
 	str := fmt.Sprintf("cataid=%s&ptime=%d&userid=%s%s", cataid, ptime, self.UserID, self.SecretKey)
-	sign := GetSign(str)
 
-	_, _, errs := goreq.New().Post(url).
-		BindBody(&resp).
-		Query(fmt.Sprintf("ptime=%d", ptime)).
-		Query("sign=" + sign).
-		Query("cataid=" + cataid).
-		Query("userid=" + self.UserID).
-		SetCurlCommand(self.Verbose).
-		SetDebug(self.Verbose).
-		End()
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["cataid"] = cataid
+	params["userid"] = self.UserID
 
-	if len(errs) > 0 {
-		return &DelCataMsg{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
+	self.request(POST, url, str, params, &resp)
+
 	return &resp
 }
 
 // 获取视频分类目录
 func (self PolyvInfo) CataJson() *CataMsg {
-	// http://api.polyv.net/v2/video/{userid}/cataJson
-	var catamsg CataMsg
+	catamsg := CataMsg{}
+	params = make(map[string]string)
 	url := fmt.Sprintf("%s/%s/cataJson", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("ptime=%d&userid=%s%s", ptime, self.UserID, self.SecretKey)
-	sign := GetSign(str)
-
-	_, _, errs := goreq.New().Get(url).
-		BindBody(&catamsg).
-		Query(fmt.Sprintf("ptime=%d", ptime)).
-		Query("sign=" + sign).
-		SetCurlCommand(self.Verbose).
-		SetDebug(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &CataMsg{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
-
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	self.request(GET, url, str, params, &catamsg)
 	return &catamsg
 }
 
 // 获取视频回收站列表
 func (self *PolyvInfo) GetDelList(pageNum, pageSize string) *DelVideoList {
-	// http://api.polyv.net/v2/video/{userid}/get-del-list
+	params = make(map[string]string)
+	delvideolist := DelVideoList{}
+
 	if pageSize == "" {
 		pageSize = "10"
 	}
@@ -537,33 +455,16 @@ func (self *PolyvInfo) GetDelList(pageNum, pageSize string) *DelVideoList {
 		pageNum = "1"
 	}
 
-	var delvideolist DelVideoList
 	url := fmt.Sprintf("%s/%s/get-del-list", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
-
 	str := fmt.Sprintf("format=json&numPerPage=%s&pageNum=%s&ptime=%d%s", pageSize, pageNum, ptime, self.SecretKey)
 
-	sign := GetSign(str)
-	_, _, errs := goreq.New().Get(url).
-		BindBody(&delvideolist).
-		Query("format=json").
-		Query("pageNum=" + pageNum).
-		Query("numPerPage=" + pageSize).
-		Query(fmt.Sprintf("ptime=%d", ptime)).
-		Query("sign=" + sign).
-		SetCurlCommand(self.Verbose).
-		SetDebug(self.Verbose).
-		End()
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["pageNum"] = pageNum
+	params["numPerPage"] = pageSize
+	params["format"] = "json"
 
-	if len(errs) > 0 {
-		return &DelVideoList{
-			RespMsg: RespMsg{
-				Status_Code: 400,
-				Status:      "error",
-				Message:     errs[0].Error(),
-			},
-		}
-	}
+	self.request(GET, url, str, params, &delvideolist)
 
 	return &delvideolist
 }
@@ -656,7 +557,7 @@ func (self *PolyvInfo) VideoView(vid, dr, period string) *VideoViewMsg {
 	ptime := time.Now().Unix() * 1000
 
 	if dr == "" {
-		dr = SevenDays
+		dr = "7days"
 	}
 
 	if period == "" {
@@ -710,7 +611,7 @@ func (self *PolyvInfo) RankList(dr, start, end string) *RankMsg {
 	ptime := time.Now().Unix() * 1000
 
 	if dr == "" {
-		dr = SevenDays
+		dr = "7days"
 	}
 
 	str := ""
@@ -754,7 +655,7 @@ func (self *PolyvInfo) DomainList(dr, start, end string) *DomainMsg {
 	ptime := time.Now().Unix() * 1000
 
 	if dr == "" {
-		dr = SevenDays
+		dr = "7days"
 	}
 
 	str := ""

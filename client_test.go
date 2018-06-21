@@ -9,14 +9,22 @@ import (
 )
 
 func TestVideoInfo(t *testing.T) {
+	var p PolyvInfo
+	email := ""
+	passwd := ""
+	passwdmd5 := ""
 
-	p := PolyvInfo{
-		UserID:     "",
-		WriteToken: "",
-		ReadToken:  "",
-		SecretKey:  "",
-		Verbose:    false,
-	}
+	Convey("test login", t, func() {
+		pu := Login(email, passwd, passwdmd5)
+		p = PolyvInfo{
+			UserID:     pu.UserID,
+			ReadToken:  pu.ReadToken,
+			WriteToken: pu.WriteToken,
+			SecretKey:  pu.SecretKey,
+			Verbose:    false,
+		}
+		So(pu.Status_Code, ShouldEqual, 200)
+	})
 
 	Convey("test polyv-go-sdk video", t, func() {
 		msg := &CataMsg{}
@@ -56,9 +64,13 @@ func TestVideoInfo(t *testing.T) {
 		So(vinfo.Status_Code, ShouldEqual, 200)
 		So(len(vinfo.Data), ShouldEqual, 1)
 
-		img_url := ""
+		img_url := "http://ok0jpejfs.bkt.clouddn.com/k2.jpg"
 		up_msg := p.UploadConverImageUrl(vid, "", img_url)
 		So(up_msg.Status_Code, ShouldEqual, 200)
+
+		img_url = ""
+		up_msg = p.UploadConverImageUrl(vid, "", img_url)
+		So(up_msg.Status_Code, ShouldEqual, 400)
 
 		img_msg := p.GetVideoImage(vid, "2")
 		So(img_msg.Message, ShouldEqual, "success")
