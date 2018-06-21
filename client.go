@@ -8,9 +8,6 @@ import (
 	"fmt"
 	"github.com/smallnest/goreq"
 	"io"
-	"net/http"
-	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +16,6 @@ import (
 const (
 	DefaultAPIHost   = "http://api.polyv.net/v2"
 	DefaultVideoHost = "http://api.polyv.net/v2/video"
-	DefaultPlayHost  = "http://api.polyv.net/v2/play"
 	DefaultService   = "http://v.polyv.net/uc/services/rest?method="
 )
 
@@ -40,20 +36,17 @@ var Err_uploadimg_msg = UploadImgMsg{
 	Data:     false,
 }
 
-var ostype = runtime.GOOS
-
 type PolyvInfo struct {
 	UserID     string
 	WriteToken string
 	ReadToken  string
 	SecretKey  string
 	Verbose    bool
-	ImgTmpPath string //向保利威视传输缩略图的临时下载路径
 	StartDate  string //传入保利威视第一个资源的日期
 	CataList   map[string]string
 }
 
-func getSign(value string) string {
+func GetSign(value string) string {
 	return strings.ToUpper(CryptoSHA1(value))
 }
 
@@ -82,188 +75,60 @@ func (self *PolyvInfo) GetHostUrl() *HostMsg {
 			Host_Setting: "",
 		}
 	}
-
 	return &hostmsg
 }
 
-func getTempImagePath() string {
-	//img_path= ./img_tmp
-	path, _ := os.Getwd()
-	if ostype == "windows" {
-		path = path + "\\" + "img_tmp\\"
-	} else if ostype == "linux" {
-		path = path + "/" + "img_tmp/"
-	}
-	return path
-}
-
-func folder_Exists(path string) bool {
-	if stat, err := os.Stat(path); err == nil && stat.IsDir() {
-		return true
-	}
-	return false
-}
-
-func fileExist(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil || os.IsExist(err)
-}
-
 // 上传视频的预览图
-func (self *PolyvInfo) UpFirstImageByUrl(vid, url, img_name string) *UploadImgMsg {
-
-	msg := self.GetVideoInfo(vid)
-	if msg.Status_Code != 200 {
-		Err_uploadimg_msg.ErrorStr = msg.Message
-		return &Err_uploadimg_msg
-	}
-
-	img_path := getTempImagePath()
-
-	if !folder_Exists(img_path) {
-		os.Mkdir(img_path, os.FileMode(0777))
-	}
-
-	result, img_path := self.download_img(img_path, url, img_name)
-
-	if result {
-		msg := self.UpFirstImage(vid, img_path)
-		if msg.Data {
-			if fileExist(img_path) {
-				del_err := os.Remove(img_path)
-				if del_err != nil {
-					msg.ErrorStr = fmt.Sprintf("删除地址为:%s的图片文件失败,失败原因:%s", img_path, del_err.Error())
-				}
-			} else {
-				msg.ErrorStr = fmt.Sprintf("指定的文件：%s不存在", img_path)
-			}
+func (self *PolyvInfo) UpFirstImageByUrl(vid, img_url, img_name string) *UploadImgMsg {
+	respmsg := self.UploadConverImageUrl(vid, "", img_url)
+	if respmsg.Status_Code == 200 {
+		return &UploadImgMsg{
+			ErrorStr: "",
+			Data:     true,
 		}
-		return msg
+	} else {
+		return &UploadImgMsg{
+			ErrorStr: respmsg.Message,
+			Data:     false,
+		}
 	}
-
-	Err_uploadimg_msg.ErrorStr = "下载图片失败"
-	return &Err_uploadimg_msg
 }
 
-func (self *PolyvInfo) download_img(img_path, img_url, img_name string) (bool, string) {
-	// var client *http.Client
-	result := true
+//上传多个视频的预览图URL
+func (self *PolyvInfo) UploadConverImageUrl(vids, cataids, img_url string) *RespMsg {
+	//http://api.polyv.net/v2/video/{userid}/uploadCoverImageUrl
+	respmsg := RespMsg{}
+	str := ""
 
-	client := new(http.Client)
-	resp, err := client.Get(img_url)
-	if err != nil {
-		return false, ""
-	}
-	defer resp.Body.Close()
-
-	img_path = img_path + img_name
-	file, err := os.Create(img_path)
-	if err != nil {
-		return false, ""
+	if img_url == "" {
+		respmsg.Status_Code = 400
+		respmsg.Message = "图片路径不能为空"
+		return &respmsg
 	}
 
-	// Dump the data to a file.
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
-		return false, ""
+	req := goreq.New().
+		Post(fmt.Sprintf("%s/%s/uploadCoverImageUrl", DefaultVideoHost, self.UserID)).
+		BindBody(&respmsg)
+
+	ptime := time.Now().Unix() * 1000
+
+	if vids != "" {
+		str = fmt.Sprintf("fileUrl=%s&ptime=%s&vids=%s%s", img_url, fmt.Sprintf("%d", ptime), vids, self.SecretKey)
+		req.Query("vids=" + vids)
+
+	} else if cataids != "" {
+		str = fmt.Sprintf("fileUrl=%s&ptime=%s&cataids=%s%s", img_url, fmt.Sprintf("%d", ptime), vids, self.SecretKey)
+		req.Query("cataids=" + vids)
 	}
+	sign := GetSign(str)
+	req.Query("fileUrl=" + img_url)
+	req.Query("ptime=" + fmt.Sprintf("%d", ptime))
+	req.Query("sign=" + sign)
+	req.SetDebug(self.Verbose).SetCurlCommand(self.Verbose).End()
 
-	// Close the open file
-	file.Close()
+	return &respmsg
 
-	return result, img_path
 }
-
-// 上传视频的预览图
-func (self *PolyvInfo) UpFirstImage(vid, filename string) *UploadImgMsg {
-	// http://v.polyv.net/uc/services/rest?method=upFirstImage
-	var upimgmsg UploadImgMsg
-	if filename == "" {
-		Err_uploadimg_msg.ErrorStr = "参数不能为空"
-		return &Err_uploadimg_msg
-	}
-
-	file, err := os.Open(filename)
-	if err != nil {
-		Err_uploadimg_msg.ErrorStr = "文件路径无效"
-		return &Err_uploadimg_msg
-	}
-	defer file.Close()
-
-	str := fmt.Sprintf("vid=%s&writetoken=%s%s", vid, self.WriteToken, self.SecretKey)
-	sign := getSign(str)
-
-	url := fmt.Sprintf("%supFirstImage", DefaultService)
-
-	_, _, errs := goreq.New().Post(url).
-		BindBody(&upimgmsg).
-		Query("writetoken="+self.WriteToken).
-		Query("vid="+vid).
-		Query("sign="+sign).
-		SendFile("Filedata", filename).
-		// SetDebug(self.Verbose).
-		// SetCurlCommand(self.Verbose).
-		End()
-
-	if len(errs) > 0 {
-		return &UploadImgMsg{ErrorStr: errs[0].Error()}
-	}
-
-	return &upimgmsg
-}
-
-//上传远程视频
-// http://v.polyv.net/uc/services/rest?method=uploadfile
-// func (self *PolyvInfo) uploadFile(m *LocalFileInfo) (*UploadVideoMsg, error) {
-// 	var upvideomsg UploadVideoMsg
-// 	if m.Fileinfo.Title == "" || m.FileName == "" {
-// 		return &UploadVideoMsg{}, errors.New("参数不能为空")
-// 	}
-
-// 	file, err := os.Open(m.FileName)
-// 	if err != nil {
-// 		return &UploadVideoMsg{}, errors.New("文件路径无效")
-// 	}
-// 	defer file.Close()
-
-// 	fi := m.Fileinfo
-// 	jsonrpc, err := json.Marshal(fi)
-// 	if err != nil {
-// 		return &UploadVideoMsg{}, err
-// 	}
-
-// 	//必须这样写，不要调整顺序！！！
-// 	str := fmt.Sprintf("cataid=%s&JSONRPC=%s&writetoken=%s%s",
-// 		m.Cataid, string(jsonrpc), self.WriteToken, self.SecretKey)
-
-// 	sign := getSign(str)
-
-// 	url := fmt.Sprintf("%suploadfile", DefaultService)
-// 	req := goreq.New().Post(url)
-
-// 	_, body, errs := req.
-// 		Query("writetoken="+self.WriteToken).
-// 		Query("jsonrpc="+string(jsonrpc)).
-// 		Query("fcharset=ISO-8859-1").
-// 		Query("cataid="+m.Cataid).
-// 		Query("watermark="+m.WaterMark).
-// 		Query("sign="+sign).
-// 		SetDebug(self.Verbose).
-// 		SetCurlCommand(self.Verbose).
-// 		SendFile("Filedata", m.FileName).
-// 		End()
-
-// 	if len(errs) > 0 {
-// 		return &UploadVideoMsg{}, errs[0]
-// 	}
-
-// 	err = json.Unmarshal([]byte(body), &upvideomsg)
-// 	if err != nil {
-// 		return &UploadVideoMsg{}, err
-// 	}
-
-// 	return &upvideomsg, nil
-// }
 
 // 上传远程视频
 func (self *PolyvInfo) UploadUrlFile(urlfileinfo *UrlFileInfo) *ReturnMsg {
@@ -278,7 +143,7 @@ func (self *PolyvInfo) UploadUrlFile(urlfileinfo *UrlFileInfo) *ReturnMsg {
 	str := fmt.Sprintf("desc=%s&fileUrl=%s&tag=%s&title=%s&writetoken=%s%s",
 		urlfileinfo.Desc, urlfileinfo.FileUrl, urlfileinfo.Tag, urlfileinfo.Title, self.WriteToken, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	url := fmt.Sprintf("%suploadUrlFile", DefaultService)
 	req := goreq.New().Get(url)
@@ -335,7 +200,7 @@ func (self *PolyvInfo) GetUseInfo(query_date string) *UseMsg {
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("date=%s&ptime=%d%s", query_date, ptime, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/user/%s/main", DefaultAPIHost, self.UserID)).
 		BindBody(&usemsg).
@@ -366,7 +231,7 @@ func (self *PolyvInfo) GetTotalUseInfo() *UseMsg {
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("ptime=%d%s", ptime, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/user/%s/main", DefaultAPIHost, self.UserID)).
 		BindBody(&usemsg).
 		Query("ptime=" + fmt.Sprintf("%d", ptime)).
@@ -400,7 +265,7 @@ func (self *PolyvInfo) GetVideoImage(vid, t string) *VideoImgMsg {
 	}
 
 	str := fmt.Sprintf("ptime=%d&t=%s&vid=%s%s", ptime, t, vid, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	url := fmt.Sprintf("%s/video/%s/get-image", DefaultAPIHost, self.UserID)
 
@@ -442,7 +307,7 @@ func (self *PolyvInfo) GetVideoInfo(vid string) *VideoMsg {
 	} else {
 		str = fmt.Sprintf("format=%s&jsonp=%s&ptime=%d&vid=%s%s", format, jsonp, ptime, vid, self.SecretKey)
 	}
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	req.Query("format=" + format)
 	if jsonp != "" {
@@ -506,7 +371,7 @@ func (self *PolyvInfo) GetVideoList(catatree, pageSize, pageNum, startDate, endD
 	param_str := str
 	str = str + self.SecretKey
 
-	sign := getSign(str)
+	sign := GetSign(str)
 	param_str = param_str + "&sign=" + sign
 
 	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/video/%s/get-new-list?%s", DefaultAPIHost, self.UserID, param_str)).
@@ -546,7 +411,7 @@ func (self *PolyvInfo) SearchByTitle(title, pageSize, pageNum string) *StandVide
 	param_str := str
 	str = str + self.SecretKey
 
-	sign := getSign(str)
+	sign := GetSign(str)
 	param_str = param_str + "&sign=" + sign
 
 	_, _, errs := goreq.New().Get(fmt.Sprintf("%s/video/%s/search?%s", DefaultAPIHost, self.UserID, param_str)).
@@ -564,56 +429,8 @@ func (self *PolyvInfo) SearchByTitle(title, pageSize, pageNum string) *StandVide
 			},
 		}
 	}
-
 	return &videolist
 }
-
-// 按标签查找视频
-// func (self *PolyvInfo) SearchByTag(tag, numPerPage, pageNum string) *VideoList {
-// 	// http://api.polyv.net/v2/video/{userid}/search
-// 	var videolist VideoList
-// 	param = map[string]string{}
-// 	req := goreq.New().Get(fmt.Sprintf("%s/video/%s/search", DefaultAPIHost, self.UserID)).BindBody(&videolist)
-
-// 	if numPerPage == "" {
-// 		numPerPage = "10"
-// 	}
-
-// 	if pageNum == "" {
-// 		pageNum = "1"
-// 	}
-
-// 	param["numPerPage"] = numPerPage
-// 	param["pageNum"] = pageNum
-
-// 	ptime := fmt.Sprintf("%d", time.Now().Unix()*1000)
-// 	str := ""
-
-// 	str = fmt.Sprintf("numPerPage=%s&pageNum=%s&ptime=%s&tag=%s%s", numPerPage, pageNum, ptime, tag, self.SecretKey)
-// 	req.Query("numPerPage=" + numPerPage)
-// 	req.Query("pageNum=" + pageNum)
-
-// 	sign := getSign(str)
-
-// 	_, _, errs := req.
-// 		BindBody(&videolist).
-// 		Query("tag=" + tag).
-// 		Query("sign=" + sign).
-// 		Query("ptime=" + ptime).
-// 		SetDebug(self.Verbose).
-// 		SetCurlCommand(self.Verbose).
-// 		End()
-
-// 	if len(errs) > 0 {
-// 		return &VideoList{
-// 			Status_Code: 400,
-// 			Status:      "error",
-// 			Message:     errs[0].Error(),
-// 		}
-// 	}
-
-// 	return &videolist
-// }
 
 func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
 	//http://api.polyv.net/v2/video/{userid}/addCata
@@ -622,7 +439,7 @@ func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
 	url := fmt.Sprintf("%s/%s/addCata", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("cataname=%s&parentid=1&ptime=%d%s", cata_name, ptime, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Post(url).
 		BindBody(&resp).
@@ -654,7 +471,7 @@ func (self *PolyvInfo) DelCata(cataid string) *DelCataMsg {
 	ptime := time.Now().Unix() * 1000
 
 	str := fmt.Sprintf("cataid=%s&ptime=%d&userid=%s%s", cataid, ptime, self.UserID, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Post(url).
 		BindBody(&resp).
@@ -685,7 +502,7 @@ func (self PolyvInfo) CataJson() *CataMsg {
 	url := fmt.Sprintf("%s/%s/cataJson", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("ptime=%d&userid=%s%s", ptime, self.UserID, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Get(url).
 		BindBody(&catamsg).
@@ -708,46 +525,6 @@ func (self PolyvInfo) CataJson() *CataMsg {
 	return &catamsg
 }
 
-// 获取用户不能通过审核的视频列表
-// http://v.polyv.net/uc/services/rest?method=getNotPassList（v1.0)
-// http://api.polyv.net/v2/video/{userid}/get-illegal-list
-// 参数名 		必选 	类型及范围 	说明
-// ptime 		true 	string 		当前13位毫秒级时间戳，3分钟内有效
-// userid 		true 	string 		用户id
-// pageNum 		true 	int 		取第几页
-// numPerPage 	true 	int 		平均每页多少条数据
-// sign 		true 	string 		非业务参数，签名，40位大写SHA1值
-// format 		false 	string 		默认返回json格式，如果format=xml返回xml格式
-// jsonp 		false 	string 		例如，正常情况{error:0,data:””}，加 jsonp=a后返回a({error:0,data:””})
-// func (self *PolyvInfo) GetNotPassList(pageNum, numPerPage int) (*NoPassVideoList, error) {
-// 	var nopasslist NoPassVideoList
-
-// 	sign_str := fmt.Sprintf("numPerPage=%d&pageNum=%d&readtoken=%s%s", numPerPage, pageNum, self.ReadToken, self.SecretKey)
-// 	loginfo(sign_str)
-
-// 	sign := getSign(sign_str)
-// 	url := fmt.Sprintf("%sgetNotPassList", DefaultVideoHost)
-// 	_, body, errs := goreq.New().Get(url).
-// 		Query("readtoken=" + self.ReadToken).
-// 		Query("pageNum=" + strconv.Itoa(pageNum)).
-// 		Query("numPerPage=" + strconv.Itoa(numPerPage)).
-// 		Query("sign=" + sign).
-// 		SetDebug(self.Verbose).
-// 		SetCurlCommand(self.Verbose).
-// 		End()
-
-// 	if len(errs) > 0 {
-// 		return &NoPassVideoList{}, errs[0]
-// 	}
-
-// 	err := json.Unmarshal([]byte(body), &nopasslist)
-// 	if err != nil {
-// 		return &NoPassVideoList{}, err
-// 	}
-
-// 	return &nopasslist, nil
-// }
-
 // 获取视频回收站列表
 func (self *PolyvInfo) GetDelList(pageNum, pageSize string) *DelVideoList {
 	// http://api.polyv.net/v2/video/{userid}/get-del-list
@@ -765,7 +542,7 @@ func (self *PolyvInfo) GetDelList(pageNum, pageSize string) *DelVideoList {
 
 	str := fmt.Sprintf("format=json&numPerPage=%s&pageNum=%s&ptime=%d%s", pageSize, pageNum, ptime, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 	_, _, errs := goreq.New().Get(url).
 		BindBody(&delvideolist).
 		Query("format=json").
@@ -815,7 +592,7 @@ func (self PolyvInfo) ChangeCata(vids, cataid string) *ChangeCataMsg {
 	url := fmt.Sprintf("%s/%s/changeCata", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("cataid=%s&ptime=%d&userid=%s&vids=%s%s", cataid, ptime, self.UserID, vids, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Get(url).
 		BindBody(&changcatamsg).
@@ -848,7 +625,7 @@ func (self PolyvInfo) DelVideo(vid string) *DelVideoMsg {
 	url := fmt.Sprintf("%s/%s/del-video", DefaultVideoHost, self.UserID)
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("ptime=%d&vid=%s%s", ptime, vid, self.SecretKey)
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := goreq.New().Get(url).BindBody(&delmsg).
 		Query("vid=" + vid).
@@ -897,7 +674,7 @@ func (self *PolyvInfo) VideoView(vid, dr, period string) *VideoViewMsg {
 
 	str := fmt.Sprintf("dr=%s&period=%s&ptime=%d&vid=%s%s", dr, period, ptime, vid, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	req.Query("vid=" + vid).
 		Query(fmt.Sprintf("ptime=%d", ptime)).
@@ -942,7 +719,7 @@ func (self *PolyvInfo) RankList(dr, start, end string) *RankMsg {
 		str = fmt.Sprintf("dr=%s&jsonp=%s&end=%s&ptime=%d&start=%s%s", dr, jsonp, end, ptime, start, self.SecretKey)
 	}
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := req.
 		BindBody(&rankmsg).
@@ -986,7 +763,7 @@ func (self *PolyvInfo) DomainList(dr, start, end string) *DomainMsg {
 		str = fmt.Sprintf("dr=%s&jsonp=%s&end=%s&ptime=%d&start=%s%s", dr, jsonp, end, ptime, start, self.SecretKey)
 	}
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := req.
 		BindBody(&domainmsg).
@@ -1020,7 +797,7 @@ func (self *PolyvInfo) ViewLog(vid, day string) *VideoLogMsg {
 
 	str := fmt.Sprintf("day=%s&ptime=%d&userid=%s%s", day, ptime, self.UserID, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 
 	_, _, errs := req.
 		BindBody(&videologms).
@@ -1052,7 +829,7 @@ func (self *PolyvInfo) MonthViewLog(month string, numPerPage, pageNum int) *Vide
 	ptime := time.Now().Unix() * 1000
 	str := fmt.Sprintf("month=%s&numPerPage=%d&pageNum=%d&ptime=%d%s", month, numPerPage, pageNum, ptime, self.SecretKey)
 
-	sign := getSign(str)
+	sign := GetSign(str)
 	if numPerPage == 0 {
 		numPerPage = 99
 	}

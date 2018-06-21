@@ -18,9 +18,7 @@ func TestVideoInfo(t *testing.T) {
 		Verbose:    false,
 	}
 
-	//查分类树取各目录下结果
 	Convey("test polyv-go-sdk video", t, func() {
-
 		msg := &CataMsg{}
 		msg = p.CataJson()
 		So(msg.Status_Code, ShouldEqual, 200)
@@ -46,9 +44,8 @@ func TestVideoInfo(t *testing.T) {
 		So(msg.Status_Code, ShouldEqual, 200)
 		So(len(msg.Data[0].CataNodes), ShouldEqual, org_cata_nodes)
 
-		total_record := msg.Data[0].Videos //库内视频总数
+		total_record := msg.Data[0].Videos
 
-		// p.GetVideoList(catatree, numPerPage, pageNum, startDate, endDate)
 		vlist := p.GetVideoList("", "3", "1", "", "")
 		So(vlist.Status_Code, ShouldEqual, 200)
 		So(len(vlist.Data), ShouldEqual, 3)
@@ -58,6 +55,10 @@ func TestVideoInfo(t *testing.T) {
 		vinfo := p.GetVideoInfo(vid)
 		So(vinfo.Status_Code, ShouldEqual, 200)
 		So(len(vinfo.Data), ShouldEqual, 1)
+
+		img_url := ""
+		up_msg := p.UploadConverImageUrl(vid, "", img_url)
+		So(up_msg.Status_Code, ShouldEqual, 200)
 
 		img_msg := p.GetVideoImage(vid, "2")
 		So(img_msg.Message, ShouldEqual, "success")
@@ -95,16 +96,5 @@ func TestVideoInfo(t *testing.T) {
 		vinfo = p.GetVideoInfo(vid)
 		So(vinfo.Status_Code, ShouldEqual, 400)
 	})
-
-	// Convey("search video tag", t, func() {
-	// 	tag := "bb"
-	// 	vlist, err := p.SearchByTag(tag, 0, 0)
-	// 	So(err, ShouldBeNil)
-	// 	So(vlist.Total, ShouldEqual, 2)
-
-	// 	vlist, err = p.SearchByTag(tag, 10, 1)
-	// 	So(err, ShouldBeNil)
-	// 	So(vlist.Total, ShouldEqual, 2)
-	// })
 
 }
