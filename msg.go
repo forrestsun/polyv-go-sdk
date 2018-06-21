@@ -356,3 +356,20 @@ type ChangeCataMsg struct {
 	RespMsg
 	Data bool `json:"data"`
 }
+
+type PolyvUserInfo struct {
+	RespMsg
+	PolyvInfo   `json:"data"`
+	RemainBytes uint64 `json:"remainBytes"`
+	LeftDay     int    `json:"leftday"`
+}
+
+type PolyvInfo struct {
+	UserID     string
+	WriteToken string
+	ReadToken  string
+	SecretKey  string
+	Verbose    bool
+	StartDate  string //传入保利威视第一个资源的日期
+	CataList   map[string]string
+}

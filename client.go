@@ -36,14 +36,15 @@ var Err_uploadimg_msg = UploadImgMsg{
 	Data:     false,
 }
 
-type PolyvInfo struct {
-	UserID     string
-	WriteToken string
-	ReadToken  string
-	SecretKey  string
-	Verbose    bool
-	StartDate  string //传入保利威视第一个资源的日期
-	CataList   map[string]string
+func Login(email, passwd string) *PolyvUserInfo {
+	var userinfo PolyvUserInfo
+	pwdmd5 := ""
+	goreq.New().
+		Post(fmt.Sprintf("http://api.polyv.net/v2/user/login?email=%s&password=%s&passwordMd5=%s",
+			email, passwd, pwdmd5)).
+		BindBody(&userinfo).End()
+
+	return &userinfo
 }
 
 func GetSign(value string) string {
