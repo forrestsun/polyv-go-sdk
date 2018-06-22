@@ -276,26 +276,6 @@ type VideoLogList struct {
 	LastModified    int    `json:"lastModified"`    // 日志更新日期 (格式为13位的时间戳)
 }
 
-type UrlFileInfo struct {
-	FileUrl string
-	CataId  string //设定上传视频的分类
-	Async   bool
-	FileInfo
-}
-
-type LocalFileInfo struct {
-	FileName  string //文件名称
-	WaterMark string //水印图片的URL，图片格式必须是png格式
-	CataId    string //设定上传视频的分类
-	FileInfo
-}
-
-type FileInfo struct {
-	Title string `json:"title"`
-	Tag   string `json:"tag"`
-	Desc  string `json:"desc"`
-}
-
 type ReturnMsg struct {
 	Status_Code int         `json:"error"`
 	Data        []VideoInfo `json:"data"`
