@@ -22,7 +22,7 @@ var params map[string]string
 //echo -n 'mder.mder/1' | md5sum/sha1sum
 // 为避免明文读取，参数passwd为SHA1生成密码生成后的参数
 // 参数passwdmd5为密码的32位MD5校验码
-func Login(email, passwd, passwdmd5 string) *PolyvUserInfo {
+func Login(email, passwd, passwdmd5 string, debug bool) *PolyvUserInfo {
 	var userinfo PolyvUserInfo
 	if email == "" || passwd == "" || passwdmd5 == "" || len(passwd) < 20 {
 		return &PolyvUserInfo{
@@ -39,8 +39,8 @@ func Login(email, passwd, passwdmd5 string) *PolyvUserInfo {
 	pwdmd5 := ""
 	goreq.New().Post(fmt.Sprintf("http://api.polyv.net/v2/user/login?email=%s&password=%s&passwordMd5=%s",
 		email, passwd, pwdmd5)).BindBody(&userinfo).
-		// SetDebug(true).
-		// SetCurlCommand(true).
+		SetDebug(debug).
+		SetCurlCommand(debug).
 		End()
 
 	return &userinfo
@@ -103,12 +103,35 @@ func (self *PolyvInfo) UploadConverImageUrl(vids, cataids, img_url string) *Resp
 
 }
 
-func (self *PolyvInfo) UploadMultiUrlFile(title, file_url, cataid string) *RespMsg {
+func (self *PolyvInfo) UploadUrlFile(title, file_url, cataid string) *RespMsg {
+	file_list := make(map[string]string, 0)
+	file_list[title] = file_url
+	return self.UploadMultiUrlFile(file_list, cataid)
+}
+
+func (self *PolyvInfo) UploadMultiUrlFile(uplist map[string]string, cataid string) *RespMsg {
 	params = make(map[string]string)
 	respmsg := RespMsg{}
 	ptime := time.Now().Unix() * 1000
+
+	title := ""
+	file_url := ""
+	for k, v := range uplist {
+		if v != "" {
+			title = k + "," + title
+			file_url = v + "," + file_url
+		}
+	}
+
+	title = title[0 : len(title)-1]
+	file_url = file_url[0 : len(file_url)-1]
+
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/grab/%s/upload/multi", self.UserID)
 	str := fmt.Sprintf("cataid=%s&fileUrl=%s&ptime=%d&title=%s%s", cataid, file_url, ptime, title, self.SecretKey)
+	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["fileUrl"] = file_url
+	params["title"] = title
+	params["cataid"] = cataid
 
 	self.request(POST, url, str, params, &respmsg)
 	return &respmsg
