@@ -301,6 +301,19 @@ func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
 	return &resp
 }
 
+// 设置某一级分类的分类属性
+// 参数名		必选		类型及范围	说明
+// isSettings	false	string		是否启用设置
+// keepSource	false	string		源文件播放，1为开启，0为关闭；开启时不对视频进行转码（仅对新上传视频有效）
+// adownload	false	string		视频加密设置（仅对新上传视频有效）
+// hlslevel		false	string		移动端加密设置，有效取值为 open: 非加密授权；web: WEB授权；app: APP授权；wxa_app：小程序授权
+// isEdu		false	string		视频优化，1为开启，0为关闭（仅对新上传视频生效）
+// encode_aac	false	string		生成音频文件，1为开启，0为关闭（该功能只对部分有权限用户开放，且只对新上传视频生效）
+// http://api.polyv.net/v2/video/{userid}/updateCataProfile
+func (self *PolyvInfo) UpdateCata() {
+
+}
+
 func (self *PolyvInfo) DelCata(cataid string) *DelCataMsg {
 	resp := DelCataMsg{}
 	params = make(map[string]string)
