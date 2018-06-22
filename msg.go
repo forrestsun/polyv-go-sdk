@@ -323,8 +323,8 @@ type UseInfo struct {
 	UsedSpace  uint64 `json:"usedSpace"`  //已用空间
 	UsedFlow   uint64 `json:"usedFlow"`   //已用流量
 	TotalSpace uint64 `json:"totalSpace"` //用户总空间
-	UserId     string `json:"-"`          //POLYV用户ID
-	Email      string `json:"-"`          //POLYV用户邮箱
+	UserId     string `json:"userId"`     //POLYV用户ID
+	Email      string `json:"email"`      //POLYV用户邮箱
 }
 
 type VideoImgMsg struct {

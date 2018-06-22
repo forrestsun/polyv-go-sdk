@@ -13,6 +13,7 @@ func TestVideoInfo(t *testing.T) {
 	email := ""
 	passwd := ""
 	passwdmd5 := ""
+	global_vid := ""
 
 	Convey("test login", t, func() {
 		pu := Login(email, passwd, passwdmd5)
@@ -27,8 +28,12 @@ func TestVideoInfo(t *testing.T) {
 	})
 
 	Convey("test polyv-go-sdk video", t, func() {
-		msg := &CataMsg{}
-		msg = p.CataJson()
+		use_msg := p.GetUseInfo(now.BeginningOfDay().Format("2006-01-02"))
+		So(use_msg.Status_Code, ShouldEqual, 200)
+		So(use_msg.Data.UserId, ShouldEqual, p.UserID)
+		So(use_msg.Data.Email, ShouldEqual, email)
+
+		msg := p.CataJson()
 		So(msg.Status_Code, ShouldEqual, 200)
 		org_cata_nodes := len(msg.Data[0].CataNodes)
 
@@ -60,6 +65,7 @@ func TestVideoInfo(t *testing.T) {
 		So(vlist.Total, ShouldEqual, total_record)
 
 		vid := vlist.Data[0].Vid
+		global_vid = vid
 		vinfo := p.GetVideoInfo(vid)
 		So(vinfo.Status_Code, ShouldEqual, 200)
 		So(len(vinfo.Data), ShouldEqual, 1)
@@ -107,6 +113,60 @@ func TestVideoInfo(t *testing.T) {
 		vid = "1"
 		vinfo = p.GetVideoInfo(vid)
 		So(vinfo.Status_Code, ShouldEqual, 400)
+
+		//todo:上传一个资源
+		//查回收站
+		//删除上传资源
+		//查回收站
+
+		delmsg := p.GetDelList("1", "10")
+		So(delmsg.Status_Code, ShouldEqual, 200)
+		So(len(delmsg.Data), ShouldEqual, 0)
+
+	})
+
+	Convey("get videoview", t, func() {
+		vs := p.VideoView("", "", "")
+		So(vs.Status_Code, ShouldEqual, 400)
+
+		dr := "" //默认值为7days
+		//时间段，具体值为以下几个：today（今天），yesterday（昨天），this_week（本周），
+		//last_week（上周），7days（最近7天），this_month（本月），last_month（上个月），
+		//this_year（今年），last_year（去年），默认值为7days
+
+		period := ""
+		//显示周期，具体为以下几个值：daily（按日显示），weekly（按周显示），monthly（按月显示）。
+		//默认值为daily。period的值受限于dr的值，当dr的值为today，yesterday，this_week，
+		//last_week，7days时，period只能为daily，当dr的值为this_month，last_month时，
+		//period只能为daily或者weekly
+		vs = p.VideoView(global_vid, dr, period)
+		So(vs.Status_Code, ShouldEqual, 200)
+		So(len(vs.Data), ShouldEqual, 7)
+
+		dr = "this_month"
+		period = "daily"
+		vs = p.VideoView(global_vid, dr, period)
+		So(vs.Status_Code, ShouldEqual, 200)
+		// So(len(vs.Data), ShouldEqual, 24)
+
+	})
+
+	Convey("get videoview ranklist", t, func() {
+		vs := p.RankList("", now.BeginningOfMonth().Format("2006-01-02"), now.EndOfMonth().Format("2006-01-02"))
+		So(vs.Status_Code, ShouldEqual, 200)
+	})
+
+	Convey("get videoview domain list", t, func() {
+		vs := p.DomainList("", now.BeginningOfMonth().Format("2006-01-02"), now.EndOfMonth().Format("2006-01-02"))
+		So(vs.Status_Code, ShouldEqual, 200)
+
+		vs = p.DomainList("this_year", now.BeginningOfDay().Format("2006-01-02"), now.BeginningOfDay().Format("2006-01-02"))
+		So(vs.Status_Code, ShouldEqual, 200)
+	})
+
+	Convey("get videoview log list by month", t, func() {
+		vs := p.MonthViewLog(now.BeginningOfMonth().Format("200601"), 50, 1)
+		So(vs.Status_Code, ShouldEqual, 200)
 	})
 
 }

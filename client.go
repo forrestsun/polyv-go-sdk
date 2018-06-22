@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/hex"
-	// "encoding/json"
 	"fmt"
 	"github.com/smallnest/goreq"
 	"io"
@@ -146,7 +145,7 @@ func (self *PolyvInfo) GetTotalUseInfo() *UseMsg {
 //获取单个视频的首图
 func (self *PolyvInfo) GetVideoImage(vid, t string) *VideoImgMsg {
 	params = make(map[string]string)
-	var vimgmsg VideoImgMsg
+	vimgmsg := VideoImgMsg{}
 	ptime := time.Now().Unix() * 1000
 
 	if t != "1" {
@@ -155,6 +154,7 @@ func (self *PolyvInfo) GetVideoImage(vid, t string) *VideoImgMsg {
 
 	params["t"] = t
 	params["vid"] = vid
+	params["ptime"] = fmt.Sprintf("%d", ptime)
 
 	str := fmt.Sprintf("ptime=%d&t=%s&vid=%s%s", ptime, t, vid, self.SecretKey)
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/get-image", self.UserID)
