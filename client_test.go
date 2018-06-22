@@ -16,15 +16,16 @@ func TestVideoInfo(t *testing.T) {
 	global_vid := ""
 
 	Convey("test login", t, func() {
-		pu := Login(email, passwd, passwdmd5)
+		pu := Login(email, passwd, passwdmd5, false)
 		p = PolyvInfo{
 			UserID:     pu.UserID,
 			ReadToken:  pu.ReadToken,
 			WriteToken: pu.WriteToken,
 			SecretKey:  pu.SecretKey,
-			Verbose:    false,
+			Verbose:    true,
 		}
 		So(pu.Status_Code, ShouldEqual, 200)
+
 	})
 
 	Convey("test polyv-go-sdk video", t, func() {
@@ -168,5 +169,7 @@ func TestVideoInfo(t *testing.T) {
 		vs := p.MonthViewLog(now.BeginningOfMonth().Format("200601"), 50, 1)
 		So(vs.Status_Code, ShouldEqual, 200)
 	})
+	// upmsg := p.UpdateCata(false, "1529682685268", "open")
+	// 	So(upmsg.Status_Code, ShouldEqual, 200)
 
 }

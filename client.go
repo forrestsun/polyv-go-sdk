@@ -289,42 +289,59 @@ func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
 	resp := AddCataMsg{}
 	params = make(map[string]string)
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/addCata", self.UserID)
-	ptime := time.Now().Unix() * 1000
 
-	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["ptime"] = ptime()
 	params["cataname"] = cata_name
 	params["parentid"] = "1"
 
-	str := fmt.Sprintf("cataname=%s&parentid=1&ptime=%d%s", cata_name, ptime, self.SecretKey)
+	str := fmt.Sprintf("cataname=%s&parentid=1&ptime=%s%s", cata_name, params["ptime"], self.SecretKey)
 	self.request(POST, url, str, params, &resp)
 
 	return &resp
 }
 
 // 设置某一级分类的分类属性
-// 参数名		必选		类型及范围	说明
-// isSettings	false	string		是否启用设置
-// keepSource	false	string		源文件播放，1为开启，0为关闭；开启时不对视频进行转码（仅对新上传视频有效）
 // adownload	false	string		视频加密设置（仅对新上传视频有效）
-// hlslevel		false	string		移动端加密设置，有效取值为 open: 非加密授权；web: WEB授权；app: APP授权；wxa_app：小程序授权
-// isEdu		false	string		视频优化，1为开启，0为关闭（仅对新上传视频生效）
-// encode_aac	false	string		生成音频文件，1为开启，0为关闭（该功能只对部分有权限用户开放，且只对新上传视频生效）
 // http://api.polyv.net/v2/video/{userid}/updateCataProfile
-func (self *PolyvInfo) UpdateCata() {
+func (self *PolyvInfo) UpdateCata(adownload bool, cataid string) *RespMsg {
+	respmsg := RespMsg{}
+	params = make(map[string]string)
 
+	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/updateCataProfile", self.UserID)
+
+	params["keepSource"] = "0"
+	params["adownload"] = toStr(adownload)
+	params["ptime"] = ptime()
+	params["cataid"] = cataid
+
+	str := fmt.Sprintf("adownload=%s&cataid=%s&keepSource=%s&ptime=%s%s",
+		params["adownload"], cataid, params["keepSource"], params["ptime"], self.SecretKey)
+
+	self.request(GET, url, str, params, &respmsg)
+	return &respmsg
+
+}
+
+func ptime() string {
+	return fmt.Sprintf("%d", time.Now().Unix()*1000)
+}
+
+func toStr(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
 }
 
 func (self *PolyvInfo) DelCata(cataid string) *DelCataMsg {
 	resp := DelCataMsg{}
 	params = make(map[string]string)
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/deleteCata", self.UserID)
-	ptime := time.Now().Unix() * 1000
 
-	str := fmt.Sprintf("cataid=%s&ptime=%d&userid=%s%s", cataid, ptime, self.UserID, self.SecretKey)
-
-	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["ptime"] = ptime()
 	params["cataid"] = cataid
 	params["userid"] = self.UserID
+	str := fmt.Sprintf("cataid=%s&ptime=%s&userid=%s%s", cataid, params["ptime"], self.UserID, self.SecretKey)
 
 	self.request(POST, url, str, params, &resp)
 
@@ -336,9 +353,9 @@ func (self PolyvInfo) CataJson() *CataMsg {
 	catamsg := CataMsg{}
 	params = make(map[string]string)
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/cataJson", self.UserID)
-	ptime := time.Now().Unix() * 1000
-	str := fmt.Sprintf("ptime=%d&userid=%s%s", ptime, self.UserID, self.SecretKey)
-	params["ptime"] = fmt.Sprintf("%d", ptime)
+
+	params["ptime"] = ptime()
+	str := fmt.Sprintf("ptime=%s&userid=%s%s", params["ptime"], self.UserID, self.SecretKey)
 	self.request(GET, url, str, params, &catamsg)
 	return &catamsg
 }
@@ -357,13 +374,13 @@ func (self *PolyvInfo) GetDelList(pageNum, pageSize string) *DelVideoList {
 	}
 
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/get-del-list", self.UserID)
-	ptime := time.Now().Unix() * 1000
-	str := fmt.Sprintf("format=json&numPerPage=%s&pageNum=%s&ptime=%d%s", pageSize, pageNum, ptime, self.SecretKey)
 
-	params["ptime"] = fmt.Sprintf("%d", ptime)
+	params["ptime"] = ptime()
 	params["pageNum"] = pageNum
 	params["numPerPage"] = pageSize
 	params["format"] = "json"
+
+	str := fmt.Sprintf("format=json&numPerPage=%s&pageNum=%s&ptime=%s%s", pageSize, pageNum, params["ptime"], self.SecretKey)
 
 	self.request(GET, url, str, params, &delvideolist)
 
