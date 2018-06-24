@@ -301,21 +301,44 @@ func (self *PolyvInfo) AddCata(cata_name string) *AddCataMsg {
 }
 
 // 设置某一级分类的分类属性
-// adownload	false	string		视频加密设置（仅对新上传视频有效）
-// http://api.polyv.net/v2/video/{userid}/updateCataProfile
-func (self *PolyvInfo) UpdateCata(adownload bool, cataid string) *RespMsg {
+// 参数名 		说明
+// cataid 		分类ID，仅能设置一级分类的属性
+// isSettings 	是否启用设置
+// keepSource 	源文件播放，1为开启，0为关闭；开启时不对视频进行转码（仅对新上传视频有效）
+// adownload 	视频加密设置（仅对新上传视频有效）
+// hlslevel 	移动端加密设置，有效取值为 open: 非加密授权；web: WEB授权；app: APP授权；wxa_app：小程序授权
+// isEdu 		视频优化，1为开启，0为关闭（仅对新上传视频生效）
+// encode_aac 	生成音频文件，1为开启，0为关闭（该功能只对部分有权限用户开放，且只对新上传视频生效）
+func (self *PolyvInfo) UpdateCata(cataid, issettiing, hlslevel string, keepsource, adownload, isedu bool) *RespMsg {
 	respmsg := RespMsg{}
 	params = make(map[string]string)
 
 	url := fmt.Sprintf("http://api.polyv.net/v2/video/%s/updateCataProfile", self.UserID)
 
-	params["keepSource"] = "0"
-	params["adownload"] = toStr(adownload)
+	params["isSettings"] = strings.ToUpper(issettiing[:1])
+
+	if keepsource {
+		params["keepSource"] = toStr(keepsource)
+		params["adownload"] = toStr(false)
+	} else {
+		params["keepSource"] = toStr(keepsource)
+		params["adownload"] = toStr(adownload)
+	}
 	params["ptime"] = ptime()
 	params["cataid"] = cataid
 
-	str := fmt.Sprintf("adownload=%s&cataid=%s&keepSource=%s&ptime=%s%s",
-		params["adownload"], cataid, params["keepSource"], params["ptime"], self.SecretKey)
+	if hlslevel == "web" || hlslevel == "app" || hlslevel == "wxa_app" {
+		params["hlslevel"] = hlslevel
+	} else {
+		params["hlslevel"] = "open"
+	}
+
+	params["isEdu"] = toStr(isedu)
+	params["encode_acc"] = "0"
+
+	str := fmt.Sprintf("adownload=%s&cataid=%s&encode_acc=%s&hlslevel=%s&isEdu=%s&isSettings=%s&keepSource=%s&ptime=%s%s",
+		params["adownload"], cataid, params["encode_acc"], params["hlslevel"], params["isEdu"],
+		params["isSettings"], params["keepSource"], params["ptime"], self.SecretKey)
 
 	self.request(GET, url, str, params, &respmsg)
 	return &respmsg
